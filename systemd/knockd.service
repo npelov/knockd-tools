@@ -1,0 +1,9 @@
+[Unit]
+Description=Port knocking daemon.
+
+[Service]
+Type=forking
+ExecStart=/usr/local/knockd/sbin/knockd -d -c /usr/local/knockd/etc/knockd.conf
+
+[Install]
+WantedBy=multi-user.target
