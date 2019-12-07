@@ -23,7 +23,6 @@
 
 char *name;
 char progPath[1026];
-bool hasDir = false;
 int program = 1;
 long timeout = 0;
 
@@ -188,8 +187,8 @@ int main(int argc, char **argv){
   }else {
     strncpy(progPath, dirTemp, 1024);
     int len = strlen(progPath);
-    progPath[len-1] = '/';
-    progPath[len] = 0;
+    progPath[len] = '/';
+    progPath[len+1] = 0;
   }
 
   switch(program){
