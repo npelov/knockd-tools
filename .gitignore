@@ -1,7 +1,6 @@
 # Prerequisites
 *.d
 .idea
-depend
 port-open
 port-close
 
