@@ -1,5 +1,9 @@
 # Prerequisites
 *.d
+.idea
+depend
+port-open
+port-close
 
 # Object files
 *.o

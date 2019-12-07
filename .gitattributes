@@ -1,0 +1,4 @@
+* text=auto
+*.c text=text
+*.h text=text
+Makefile text eol=cr
