@@ -18,8 +18,19 @@
 #define IPTABLES_OPEN_CMD "/sbin/iptables -A knock -s %s -p tcp --dport %d -j ACCEPT >/dev/null"
 #define IPTABLES_CLOSE_CMD "/sbin/iptables -D knock -s %s -p tcp --dport %d -j ACCEPT >/dev/null 2>&1"
 
+#define IPTABLES_ALLOW_CMD "/sbin/iptables -A knock_allow -s %s -j ACCEPT >/dev/null"
+#define IPTABLES_REMOVE_CMD "/sbin/iptables -D knock_allow -s %s -j ACCEPT >/dev/null 2>&1"
+
+#define IPTABLES_BLOCK_CMD "/sbin/iptables -A knock_block -s %s -j DROP >/dev/null"
+#define IPTABLES_UNBLOCK_CMD "/sbin/iptables -D knock_block -s %s -j DROP >/dev/null 2>&1"
+
 #define PROG_PORT_OPEN 1
 #define PROG_PORT_CLOSE 2
+#define PROG_IP_ALLOW 3
+#define PROG_IP_REMOVE 4
+#define PROG_IP_BLOCK 5
+#define PROG_IP_UNBLOCK 6
+
 
 char *name;
 char progPath[1026];
@@ -39,6 +50,48 @@ void usageClose(){
   printf("Removes the iptables ACCEPT rule, previously added with port-open after timeout seconds.\n");
   printf("Usage:\n");
   printf("       %s <ip> <port> [timeout=0]\n", name);
+}
+
+void usageIpAdd(int action) {
+  const char *ruleName;
+  const char *removeProgName;
+  switch(action) {
+    case PROG_IP_ALLOW:
+      ruleName = "ACCEPT";
+      removeProgName = "ip-remove";
+      break;
+    case PROG_IP_BLOCK:
+      ruleName = "REJECT";
+      removeProgName = "ip-unblock";
+      break;
+    default:
+      printf("Bad action: %d\n", action);
+      return;
+  }
+  printf("Adds %s rule for a given IP using iptables. If timeout is grater than 0 starts %s with the same parameters:\n", ruleName, removeProgName);
+  printf("Usage:\n");
+  printf("       %s <ip> [timeout=0]\n", name);
+}
+
+void usageIpRemove(int action){
+  const char *ruleName;
+  const char *addProgName;
+  switch(action) {
+    case PROG_IP_REMOVE:
+      ruleName = "ACCEPT";
+      addProgName = "ip-remove";
+      break;
+    case PROG_IP_UNBLOCK:
+      ruleName = "REJECT";
+      addProgName = "ip-unblock";
+      break;
+    default:
+      printf("Bad action: %d\n", action);
+      return;
+  }
+  printf("Removes the iptables %s rule, previously added with %s after timeout seconds.\n", ruleName, addProgName);
+  printf("Usage:\n");
+  printf("       %s <ip> [timeout=0]\n", name);
 }
 
 void usage() {
@@ -138,6 +191,7 @@ bool verifyIp(const char *ip){
     usage();
     return false;
   }
+
   if(strlen(ip)>15){
     printf("IP should be max 15 characters\n");
     usage();
@@ -165,6 +219,109 @@ bool verifyPort(long port) {
   return true;
 }
 
+int ipAllowBlock(int action, int argc, char **argv){
+  char **endPtr = NULL;
+
+  if(argc < 2){
+    usageIpAdd(action);
+    return 1;
+  }
+
+  const char *ip = argv[1];
+  if(!verifyIp(ip))
+    return 1;
+
+  if(argc > 2){
+    timeout=strtol(argv[2], endPtr, 10);
+  }
+
+  char *cmd = malloc(1500);
+  const char *cmdTemplate = NULL;
+  const char *closeCmdTemplate;
+
+  switch(action) {
+    case PROG_IP_ALLOW:
+      cmdTemplate = IPTABLES_ALLOW_CMD;
+      closeCmdTemplate = "%sip-remove %s %d";
+      break;
+    case PROG_IP_BLOCK:
+      cmdTemplate = IPTABLES_BLOCK_CMD;
+      closeCmdTemplate = "%sip-unblock %s %d";
+      break;
+    default:
+      printf("ipAllowBlock(): invalid action %d\n", action);
+      return 1;
+  }
+  if (cmdTemplate) {
+    sprintf(cmd, cmdTemplate, ip);
+//    printf("running cmd: %s\n", cmd);
+    system(cmd);
+
+    if (timeout > 0) {
+      sprintf(cmd, closeCmdTemplate, progPath, ip, (int) timeout);
+//      printf("ip remove cmd: %s\n", cmd);
+      system(cmd);
+    }
+  }
+  free(cmd);
+  if (!cmdTemplate) {
+    printf("Invalid action %d\n", action);
+  }
+
+  return 0;
+}
+
+int ipRemoveUnblock(int action, int argc, char **argv){
+  char **endPtr = NULL;
+
+  //printf("%d\n", argc);
+  if(argc < 2){
+    usageIpRemove(action);
+    return 1;
+  }
+
+  const char *ip = argv[1];
+  if(!verifyIp(ip))
+    return 1;
+
+
+  if(argc > 2){
+    timeout=strtol(argv[2], endPtr, 10);
+  }
+
+  const char *cmdTemplate = NULL;
+
+  switch(action) {
+    case PROG_IP_REMOVE:
+      cmdTemplate = IPTABLES_REMOVE_CMD;
+      break;
+    case PROG_IP_UNBLOCK:
+      cmdTemplate = IPTABLES_UNBLOCK_CMD;
+      break;
+  }
+
+
+  //printf("%d\n", timeout);
+  if(timeout > 0) {
+    // drop stdout and stderr
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+    if(fork() != 0) {
+      // parent
+      return 0;
+    }
+    // child
+    sleep(timeout);
+  }
+  char *cmd = malloc(1500);
+  sprintf(cmd, cmdTemplate, ip);
+//  printf("running cmd: %s\n", cmd);
+  system(cmd);
+  free(cmd);
+  return 0;
+}
+
+
 int main(int argc, char **argv){
 
   if(argc<1){
@@ -175,6 +332,14 @@ int main(int argc, char **argv){
     program = PROG_PORT_OPEN;
   }else if(strcmp(name, "port-close") == 0) {
     program = PROG_PORT_CLOSE;
+  }else if(strcmp(name, "ip-allow") == 0) {
+    program = PROG_IP_ALLOW;
+  }else if(strcmp(name, "ip-remove") == 0) {
+    program = PROG_IP_REMOVE;
+  }else if(strcmp(name, "ip-block") == 0) {
+    program = PROG_IP_BLOCK;
+  }else if(strcmp(name, "ip-unblock") == 0) {
+    program = PROG_IP_UNBLOCK;
   }
 
   char *dirTemp = dirname(argv[0]);
@@ -182,7 +347,8 @@ int main(int argc, char **argv){
     printf("Can't work with paths longer than 1024 chars\n");
     return 1;
   }
-  if(strchr(argv[0], '/') == NULL) {
+//  if(strchr(argv[0], '/') == NULL) {
+  if(false) {
     progPath[0] = 0;
   }else {
     strncpy(progPath, dirTemp, 1024);
@@ -190,6 +356,7 @@ int main(int argc, char **argv){
     progPath[len] = '/';
     progPath[len+1] = 0;
   }
+//  printf("path is %s\n", progPath);
 
   switch(program){
     case PROG_PORT_OPEN:
@@ -198,6 +365,16 @@ int main(int argc, char **argv){
     case PROG_PORT_CLOSE:
       portClose(argc, argv);
       break;
+    case PROG_IP_ALLOW:
+    case PROG_IP_BLOCK:
+      ipAllowBlock(program, argc, argv);
+      break;
+    case PROG_IP_REMOVE:
+    case PROG_IP_UNBLOCK:
+      ipRemoveUnblock(program, argc, argv);
+      break;
+    default:
+      printf("Invalid program number %d", program);
   }
 
   return 0;

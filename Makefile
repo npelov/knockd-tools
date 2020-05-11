@@ -47,6 +47,10 @@ $(PROG): $(OBJS)
 install:
 	cp -a port-open $(SBIN_DIR)/
 	cd $(SBIN_DIR) && ln -fs port-open port-close
+	cd $(SBIN_DIR) && ln -fs port-open ip-allow
+	cd $(SBIN_DIR) && ln -fs port-open ip-remove
+	cd $(SBIN_DIR) && ln -fs port-open ip-block
+	cd $(SBIN_DIR) && ln -fs port-open ip-unblock
 
 clean:
 	$(RM) -f $(PROG)
